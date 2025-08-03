@@ -164,28 +164,43 @@ try {
           }
         );
 
-        // If image_path is provided, save the image
-        if (request.params.arguments.image_path && response.data.data?.[0]?.b64_json) {
-          try {
-            const imageBuffer = Buffer.from(response.data.data[0].b64_json, 'base64');
-            const outputPath = path.resolve(request.params.arguments.image_path);
-            await fs.writeFile(outputPath, imageBuffer);
-            
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: `Image saved successfully to: ${outputPath}\n\n${JSON.stringify(response.data, null, 2)}`,
-                },
-              ],
-            };
-          } catch (error) {
-            throw new McpError(
-              ErrorCode.InternalError,
-              `Failed to save image: ${error instanceof Error ? error.message : String(error)}`
-            );
-          }
-        }
+        // FIXED: Enhanced image saving logic that works with both b64_json and url formats
+if (request.params.arguments.image_path) {
+  try {
+    let imageBuffer: Buffer;
+    
+    if (response.data.data?.[0]?.b64_json) {
+      // Handle base64 response
+      imageBuffer = Buffer.from(response.data.data[0].b64_json, 'base64');
+    } else if (response.data.data?.[0]?.url) {
+      // FIXED: Handle URL response - download the image
+      console.log('Downloading image from URL:', response.data.data[0].url);
+      const imageResponse = await axios.get(response.data.data[0].url, {
+        responseType: 'arraybuffer',
+        timeout: 30000, // 30 second timeout
+      });
+      imageBuffer = Buffer.from(imageResponse.data);
+    } else {
+      throw new Error('No image data found in response');
+    }
+    
+    const outputPath = path.resolve(request.params.arguments.image_path);
+    await fs.writeFile(outputPath, imageBuffer);
+    
+    return {
+      content: [{
+        type: 'text',
+        text: `Image saved successfully to: ${outputPath}\n\n${JSON.stringify(response.data, null, 2)}`,
+      }],
+    };
+  } catch (error) {
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Failed to save image: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
 
         return {
           content: [
